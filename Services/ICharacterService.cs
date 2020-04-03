@@ -7,7 +7,7 @@ namespace advancedwebapi.Services
 {
     public interface ICharacterService
     {
-         Task<ServiceResponse<List<CharacterDTO>>> GetAllCharacters();
+         Task<ServiceResponse<List<CharacterDTO>>> GetAllCharacters(int userID);
          Task<ServiceResponse<CharacterDTO>> GetCharacterById(int id);
          Task<ServiceResponse<List<CharacterDTO>>> AddCharacter(CharacterDTO newCharacter);
          Task<ServiceResponse<CharacterDTO>> UpdateCharacter(CharacterDTO updatedCharacter);

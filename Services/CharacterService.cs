@@ -39,9 +39,9 @@ namespace advancedwebapi.Services
             return response;
         }
 
-        public async Task<ServiceResponse<List<CharacterDTO>>> GetAllCharacters()
+        public async Task<ServiceResponse<List<CharacterDTO>>> GetAllCharacters(int userID)
         {
-            List<Character> dbCharacters = await _context.Characters.ToListAsync();
+            List<Character> dbCharacters = await _context.Characters.Where(u => u.User.Id == userID).ToListAsync();
             ServiceResponse<List<CharacterDTO>> response = new ServiceResponse<List<CharacterDTO>>();
             response.Data = dbCharacters.Select(c => _mapper.Map<CharacterDTO>(c)).ToList();
             response.DataLength = dbCharacters.Count();
