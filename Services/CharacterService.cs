@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using advancedwebapi.Context;
 using advancedwebapi.DTOs;
 using advancedwebapi.Models;
 using AutoMapper;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace advancedwebapi.Services
@@ -14,35 +16,41 @@ namespace advancedwebapi.Services
     {
         private readonly IMapper _mapper;
         private readonly DataContext _context;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public CharacterService(IMapper mapper, DataContext context)
+        private int GetUserId() => int.Parse(_httpContextAccessor.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier));
+        public CharacterService(IMapper mapper, DataContext context, IHttpContextAccessor httpContextAccessor)
         {
             _mapper = mapper;
-            _context =context;
+            _context = context;
+            _httpContextAccessor = httpContextAccessor;
         }
 
 
         public async Task<ServiceResponse<List<CharacterDTO>>> AddCharacter(CharacterDTO newCharacter)
         {
             var newCharacterEntity = _mapper.Map<Character>(newCharacter);
-            // newCharacterEntity.Id = characterRepo.Max(a => a.Id) + 1;
-            // characterRepo.Add(newCharacterEntity);
+
+            newCharacterEntity.User = await _context.Users.FirstOrDefaultAsync(u => u.Id == GetUserId());
 
             await _context.Characters.AddAsync(newCharacterEntity);
             await _context.SaveChangesAsync();
 
             ServiceResponse<List<CharacterDTO>> response = new ServiceResponse<List<CharacterDTO>>();
 
-            response.Data = _context.Characters.Select(c => _mapper.Map<CharacterDTO>(c)).ToList();
+            response.Data = _context.Characters.Where(c => c.User.Id == GetUserId()).Select(c => _mapper.Map<CharacterDTO>(c)).ToList();
             response.DataLength = _context.Characters.Count();
 
             return response;
         }
 
-        public async Task<ServiceResponse<List<CharacterDTO>>> GetAllCharacters(int userID)
+        public async Task<ServiceResponse<List<CharacterDTO>>> GetAllCharacters()
         {
-            List<Character> dbCharacters = await _context.Characters.Where(u => u.User.Id == userID).ToListAsync();
+
             ServiceResponse<List<CharacterDTO>> response = new ServiceResponse<List<CharacterDTO>>();
+
+            List<Character> dbCharacters = await _context.Characters.Where(u => u.User.Id == GetUserId()).ToListAsync();
+
             response.Data = dbCharacters.Select(c => _mapper.Map<CharacterDTO>(c)).ToList();
             response.DataLength = dbCharacters.Count();
             return response;
@@ -51,7 +59,7 @@ namespace advancedwebapi.Services
         public async Task<ServiceResponse<CharacterDTO>> GetCharacterById(int id)
         {
             ServiceResponse<CharacterDTO> response = new ServiceResponse<CharacterDTO>();
-            response.Data = _mapper.Map<CharacterDTO>(await _context.Characters.FirstOrDefaultAsync(c => c.Id == id));
+            response.Data = _mapper.Map<CharacterDTO>(await _context.Characters.FirstOrDefaultAsync(c => c.Id == id && c.User.Id == GetUserId()));
 
             return response;
         }
@@ -61,13 +69,22 @@ namespace advancedwebapi.Services
             ServiceResponse<bool> response = new ServiceResponse<bool>();
             try
             {
-                var deletedCharacter = _context.Characters.First(c => c.Id == id);
-                // characterRepo.Remove(deletedCharacter);
-                _context.Characters.Remove(deletedCharacter);
+                var deletedCharacter = await _context.Characters.FirstOrDefaultAsync(c => c.Id == id && c.User.Id == GetUserId());
 
-                await _context.SaveChangesAsync();
+                if (deletedCharacter != null)
+                {
+                    _context.Characters.Remove(deletedCharacter);
 
-                response.Data = true;
+                    await _context.SaveChangesAsync();
+
+                    response.Data = true;
+                }
+                else
+                {
+                    response.Success = false;
+                    response.Message = "Character not found.";
+                }
+
             }
             catch (Exception ex)
             {
@@ -82,17 +99,26 @@ namespace advancedwebapi.Services
             ServiceResponse<CharacterDTO> response = new ServiceResponse<CharacterDTO>();
             try
             {
-                var willUpdatecharacter = await _context.Characters.FirstAsync(c => c.Id == updatedCharacter.Id);
-                willUpdatecharacter.Defense = updatedCharacter.Defense == default(int) ? willUpdatecharacter.Defense : updatedCharacter.Defense;
-                willUpdatecharacter.HitPoints = updatedCharacter.HitPoints == default(int) ? willUpdatecharacter.HitPoints : updatedCharacter.HitPoints;
-                willUpdatecharacter.Intelligence = updatedCharacter.Intelligence == default(int) ? willUpdatecharacter.Intelligence : updatedCharacter.Intelligence;
-                willUpdatecharacter.Name = updatedCharacter.Name == default(string) ? willUpdatecharacter.Name : updatedCharacter.Name;
-                willUpdatecharacter.Strength = updatedCharacter.Strength == default(int) ? willUpdatecharacter.Strength : updatedCharacter.Strength;
+                var willUpdatecharacter = await _context.Characters.Include(c => c.User).FirstOrDefaultAsync(c => c.Id == updatedCharacter.Id);
 
-                _context.Characters.Update(willUpdatecharacter);
-                await _context.SaveChangesAsync();
-                response.Data = _mapper.Map<CharacterDTO>(willUpdatecharacter);
 
+                if (willUpdatecharacter.User.Id == GetUserId())
+                {
+                    willUpdatecharacter.Defense = updatedCharacter.Defense == default(int) ? willUpdatecharacter.Defense : updatedCharacter.Defense;
+                    willUpdatecharacter.HitPoints = updatedCharacter.HitPoints == default(int) ? willUpdatecharacter.HitPoints : updatedCharacter.HitPoints;
+                    willUpdatecharacter.Intelligence = updatedCharacter.Intelligence == default(int) ? willUpdatecharacter.Intelligence : updatedCharacter.Intelligence;
+                    willUpdatecharacter.Name = updatedCharacter.Name == default(string) ? willUpdatecharacter.Name : updatedCharacter.Name;
+                    willUpdatecharacter.Strength = updatedCharacter.Strength == default(int) ? willUpdatecharacter.Strength : updatedCharacter.Strength;
+
+                    _context.Characters.Update(willUpdatecharacter);
+                    await _context.SaveChangesAsync();
+                    response.Data = _mapper.Map<CharacterDTO>(willUpdatecharacter);
+                }
+                else
+                {
+                    response.Success = false;
+                    response.Message = "Character not found.";
+                }
             }
             catch (Exception ex)
             {
